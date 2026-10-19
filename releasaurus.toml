@@ -1,0 +1,6 @@
+[[package]]
+tag_prefix = "v"
+release_type = "generic"
+additional_manifest_files = [
+    { path = "pkg/api/version.go", version_regex = "Version\\s*=\\s*\"(?<version>\\d+\\.\\d+\\.\\d+)\"" },
+]

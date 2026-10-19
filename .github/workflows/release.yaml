@@ -1,0 +1,44 @@
+# On every push to main: publish a release if the merged commit is a release
+# pull request, then open or update the next release pull request.
+# Uses the eoscloud-release GitHub App: with the built-in GITHUB_TOKEN, the
+# release pull request would run no CI and the tag would start no workflow.
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  releasaurus:
+    name: releasaurus
+    # Releases happen on GitHub only; the internal copy must not release again.
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - name: create app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: publish release
+        uses: docker://rgonnella/releasaurus:v1.3.0-alpine@sha256:d79e73ce23d3cff16106d83672e81a697b9305f56deef8258afc1ea9602e7414
+        with:
+          args: release --forge github --repo ${{ github.server_url }}/${{ github.repository }}
+        env:
+          RELEASAURUS_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: create release pull request
+        uses: docker://rgonnella/releasaurus:v1.3.0-alpine@sha256:d79e73ce23d3cff16106d83672e81a697b9305f56deef8258afc1ea9602e7414
+        with:
+          args: release-pr --forge github --repo ${{ github.server_url }}/${{ github.repository }}
+        env:
+          RELEASAURUS_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
