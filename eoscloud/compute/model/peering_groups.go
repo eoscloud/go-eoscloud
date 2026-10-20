@@ -2,11 +2,11 @@ package model
 
 import "time"
 
-// NetworkPeering models (tag: network-peerings)
+// PeeringGroup models (tag: peering-groups)
 
-// NetworkPeering represents a Network peering.
+// PeeringGroup represents a peering group.
 
-type NetworkPeering struct {
+type PeeringGroup struct {
 	Self        string     `json:"_self,omitempty" yaml:"_self,omitempty"`
 	ID          string     `json:"id,omitempty" yaml:"id,omitempty"`
 	Name        string     `json:"name" yaml:"name"`
@@ -19,18 +19,19 @@ type NetworkPeering struct {
 	Actions     []string   `json:"_actions,omitempty" yaml:"_actions,omitempty"`
 }
 
-type NetworkPeeringRequest struct {
-	Name        string  `json:"name" yaml:"name"`
-	Description *string `json:"description,omitempty" yaml:"description,omitempty" shortflag:"D"`
-	DistrictID  string  `json:"district_id" yaml:"district_id"`
+type PeeringGroupRequest struct {
+	Name        string   `json:"name" yaml:"name"`
+	Description *string  `json:"description,omitempty" yaml:"description,omitempty" shortflag:"D"`
+	DistrictID  string   `json:"district_id" yaml:"district_id"`
+	NetworkIds  []string `json:"network_ids,omitempty" yaml:"network_ids,omitempty" shortflag:"N"`
 }
 
-type PatchedNetworkPeeringRequest struct {
+type PatchedPeeringGroupRequest struct {
 	Name        string  `json:"name,omitempty" yaml:"name,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty" shortflag:"D"`
 }
 
-// NetworkPeeringMemberRequest represents a request to add or remove a Network from a Network peering.
-type NetworkPeeringMemberRequest struct {
+// PeeringGroupMemberRequest represents a request to add or remove a Network from a peering group.
+type PeeringGroupMemberRequest struct {
 	Network string `json:"network_id" yaml:"network_id" shortflag:"N"`
 }
