@@ -1,5 +1,8 @@
-# On every push to main: publish a release if the merged commit is a release
-# pull request, then open or update the next release pull request.
+# On every push to main: if the merged commit is a release pull request, create
+# the release as a draft with the notes from CHANGELOG.md and push its tag
+# and publish it; then open or update the next release
+# pull request. releasaurus only writes the release pull request: its release
+# step publishes at once, and published releases are immutable.
 # Uses the eoscloud-release GitHub App: with the built-in GITHUB_TOKEN, the
 # release pull request would run no CI and the tag would start no workflow.
 name: release
@@ -21,6 +24,9 @@ jobs:
     # Releases happen on GitHub only; the internal copy must not release again.
     if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
+    # Checkout of CHANGELOG.md; everything else uses the App token.
+    permissions:
+      contents: read
     steps:
       - name: create app token
         id: app-token
@@ -29,12 +35,45 @@ jobs:
           client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - name: publish release
-        uses: docker://rgonnella/releasaurus:v1.3.0-alpine@sha256:d79e73ce23d3cff16106d83672e81a697b9305f56deef8258afc1ea9602e7414
+      - name: check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          args: release --forge github --repo ${{ github.server_url }}/${{ github.repository }}
+          persist-credentials: false
+
+      - name: draft release and tag
         env:
-          RELEASAURUS_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --format=%s)"
+          # Squash merge of a release pull request:
+          #   chore(main): release <package> vX.Y.Z (#N)
+          re='^chore\(main\): release [^ ]+ (v[0-9]+\.[0-9]+\.[0-9]+) \(#([0-9]+)\)$'
+          if [[ ! "$subject" =~ $re ]]; then
+            echo "not a release pull request merge"
+            exit 0
+          fi
+          tag="${BASH_REMATCH[1]}"
+          pr="${BASH_REMATCH[2]}"
+          # Notes: the newest section of CHANGELOG.md, which the release pull
+          # request wrote.
+          awk 'NR == 1 { print; next } /^# \[/ { exit } { print }' CHANGELOG.md > notes.md
+          head -n 1 notes.md | grep -F "[${tag#v}]" >/dev/null || {
+            echo "::error::CHANGELOG.md does not start with ${tag}"
+            exit 1
+          }
+          # Draft, tag, publish: the tag must exist before the release is published.
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft \
+            --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md
+          # Pushed with the App token, the tag starts the tag workflows.
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="$GITHUB_SHA" >/dev/null
+          # No assets to attach: publish right away (immutable from here on).
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          # What releasaurus' release step would do, so release-pr sees it as done.
+          gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" \
+            --remove-label 'releasaurus::pending' --add-label 'releasaurus::tagged' ||
+            echo "::warning::could not move the label of #${pr} to releasaurus::tagged"
+          echo "released ${tag} from #${pr}"
 
       - name: create release pull request
         uses: docker://rgonnella/releasaurus:v1.3.0-alpine@sha256:d79e73ce23d3cff16106d83672e81a697b9305f56deef8258afc1ea9602e7414
