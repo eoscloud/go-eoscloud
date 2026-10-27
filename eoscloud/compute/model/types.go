@@ -117,9 +117,8 @@ const (
 type StorageTypeEnum string
 
 const (
-	StorageTypeStandard    StorageTypeEnum = "standard"
-	StorageTypePerformance StorageTypeEnum = "performance"
-	StorageTypeLocal       StorageTypeEnum = "local"
+	StorageTypeStandard StorageTypeEnum = "standard"
+	StorageTypeLocal    StorageTypeEnum = "local"
 )
 
 // UnitEnum represents product cost unit
