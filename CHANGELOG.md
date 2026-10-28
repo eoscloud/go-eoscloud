@@ -1,3 +1,9 @@
+# [0.2.0](https://github.com/eoscloud/go-eoscloud/compare/v0.1.2...v0.2.0) - 2026-10-28
+
+### 🚀 Features
+
+- _(compute)_ implement new product endpoints (#5) [_(df64abd)_](https://github.com/eoscloud/go-eoscloud/commit/df64abdfdfcd4754ead2ac2158f0bbdf7d7fdc12)
+
 # [0.1.2](https://github.com/eoscloud/go-eoscloud/compare/v0.1.1...v0.1.2) - 2026-10-20
 
 ### 🐛 Bug Fixes
