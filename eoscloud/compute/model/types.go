@@ -102,3 +102,31 @@ const (
 	OptimizationCompute OptimizationEnum = "c"
 	OptimizationMemory  OptimizationEnum = "m"
 )
+
+// StorageTypeEnum represents volume storage type
+type StorageTypeEnum string
+
+const (
+	StorageTypeStandard    StorageTypeEnum = "standard"
+	StorageTypePerformance StorageTypeEnum = "performance"
+	StorageTypeLocal       StorageTypeEnum = "local"
+)
+
+// UnitEnum represents product cost unit
+type UnitEnum string
+
+const (
+	UnitPieces    UnitEnum = "pieces"
+	UnitMinutes   UnitEnum = "minutes"
+	UnitGigabytes UnitEnum = "gigabytes"
+)
+
+// KindEnum represents product kind
+type KindEnum string
+
+const (
+	KindVM           KindEnum = "vm"
+	KindVolume       KindEnum = "volume"
+	KindIP           KindEnum = "ip"
+	KindLoadBalancer KindEnum = "loadbalancer"
+)
