@@ -1,3 +1,9 @@
+# [0.3.0](https://github.com/eoscloud/go-eoscloud/compare/v0.2.0...v0.3.0) - 2026-11-02
+
+### 🚀 Features
+
+- _(object-storage)_ Deprecate old oject storage products (#7) [_(66b7637)_](https://github.com/eoscloud/go-eoscloud/commit/66b763719e04467dc3dcd448f72a8ba117e69ab1)
+
 # [0.2.0](https://github.com/eoscloud/go-eoscloud/compare/v0.1.2...v0.2.0) - 2026-10-28
 
 ### 🚀 Features
