@@ -14,7 +14,6 @@ import (
 	"go.eoscloud.io/go-eoscloud/eoscloud/compute/loadbalancer"
 	"go.eoscloud.io/go-eoscloud/eoscloud/compute/network"
 	peeringGroups "go.eoscloud.io/go-eoscloud/eoscloud/compute/peering/groups"
-	"go.eoscloud.io/go-eoscloud/eoscloud/compute/product"
 	ipProduct "go.eoscloud.io/go-eoscloud/eoscloud/compute/product/ip"
 	loadBalancerProduct "go.eoscloud.io/go-eoscloud/eoscloud/compute/product/loadbalancer"
 	vmProduct "go.eoscloud.io/go-eoscloud/eoscloud/compute/product/vm"
@@ -32,15 +31,13 @@ const serviceName = "compute"
 
 // Client represents the compute service client
 type Client struct {
-	Network      network.APIClient
-	PeeringGroup peeringGroups.APIClient
-	ACL          acl.APIClient
-	ACLRule      rule.APIClient
-	PublicIP     ip.APIClient
-	Forward      forward.APIClient
-	LoadBalancer loadbalancer.APIClient
-	// Deprecated: use VMProduct, VolumeProduct, PublicIPProduct or LoadBalancerProduct.
-	Product             product.APIClient
+	Network             network.APIClient
+	PeeringGroup        peeringGroups.APIClient
+	ACL                 acl.APIClient
+	ACLRule             rule.APIClient
+	PublicIP            ip.APIClient
+	Forward             forward.APIClient
+	LoadBalancer        loadbalancer.APIClient
 	VMProduct           vmProduct.APIClient
 	VolumeProduct       volumeProduct.APIClient
 	PublicIPProduct     ipProduct.APIClient
@@ -71,7 +68,6 @@ func NewClient(c api.Caller, baseGlobalPathPattern, baseRealmPathPattern string)
 		Forward:             forward.NewClient(c, serviceName, baseRealmPathPattern),
 		LoadBalancer:        loadbalancer.NewClient(c, serviceName, baseRealmPathPattern),
 		VM:                  vm.NewClient(c, serviceName, baseRealmPathPattern),
-		Product:             product.NewClient(c, serviceName, baseGlobalPathPattern),
 		VMProduct:           vmProduct.NewClient(c, serviceName, baseGlobalPathPattern),
 		VolumeProduct:       volumeProduct.NewClient(c, serviceName, baseGlobalPathPattern),
 		PublicIPProduct:     ipProduct.NewClient(c, serviceName, baseGlobalPathPattern),

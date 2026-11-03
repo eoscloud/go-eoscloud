@@ -1,8 +1,9 @@
 package model
 
-// Product models (tag: products)
+// Product models
 
-type Product struct {
+// BucketProduct represents a bucket product (tag: bucket-products).
+type BucketProduct struct {
 	ID                  string   `json:"id,omitempty" yaml:"id,omitempty"`
 	Name                string   `json:"name,omitempty" yaml:"name,omitempty"`
 	Description         string   `json:"description,omitempty" yaml:"description,omitempty"`
