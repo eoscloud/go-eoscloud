@@ -2,23 +2,70 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 
 	"go.eoscloud.io/go-eoscloud/pkg/auth"
 	"golang.org/x/oauth2"
 )
 
-// Option configures a client.
+// Option configures a client. Options only record configuration; the final
+// http.Client is assembled by NewClient after all options ran, so the order of
+// options does not matter.
 type Option func(*client)
 
-// WithBaseURL sets a custom baseURL
+// WithBaseURL sets a custom baseURL. The URL must use https; http is only
+// accepted for loopback hosts (localhost, 127.0.0.0/8, ::1). The pattern may
+// contain the "{service}" placeholder. An invalid URL does not panic: the
+// error is returned by every Call.
 func WithBaseURL(baseURL string) Option {
 	return func(c *client) {
+		if err := validateBaseURL(baseURL); err != nil {
+			c.optErr = err
+			return
+		}
 		c.baseURL = baseURL
 	}
 }
 
-// WithHTTPClient sets a custom http.Client.
+// validateBaseURL checks scheme and host of a base URL pattern.
+func validateBaseURL(baseURL string) error {
+	u, err := url.Parse(strings.ReplaceAll(baseURL, "{service}", "service"))
+	if err != nil {
+		return fmt.Errorf("invalid base URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("invalid base URL %q: missing host", baseURL)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("invalid base URL %q: http is only allowed for loopback hosts", baseURL)
+	default:
+		return fmt.Errorf("invalid base URL %q: scheme must be https", baseURL)
+	}
+}
+
+// isLoopbackHost reports whether host is localhost or a loopback IP.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// WithHTTPClient sets a custom base http.Client. Its Transport and Timeout are
+// kept; when an auth flow is configured, the oauth2 transport is layered on
+// top of the client's transport (in any option order).
 func WithHTTPClient(h *http.Client) Option {
 	return func(c *client) {
 		c.httpClient = h
@@ -26,22 +73,26 @@ func WithHTTPClient(h *http.Client) Option {
 }
 
 // sharedTokenSource ensures that resolvePathParams and the HTTP transport share
-// the same oauth2.ReuseTokenSource cache. Without this, each caller creates its
-// own cache and Token() is called twice per request — once for claim resolution
-// and once to attach the Authorization header.
+// the same oauth2.ReuseTokenSource cache and that all access to the underlying
+// token source (including its cached claims) is serialized by one mutex.
 type sharedTokenSource struct {
+	mu    sync.Mutex
 	inner auth.TokenSourceWithClaims
-	reuse oauth2.TokenSource // the ReuseTokenSource created by oauth2.NewClient
+	reuse oauth2.TokenSource // ReuseTokenSource wrapping inner
 }
 
-// Token uses the shared reuse cache — the same instance the HTTP transport uses.
+// Token uses the shared reuse cache. The HTTP transport uses this method too.
 func (s *sharedTokenSource) Token() (*oauth2.Token, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.reuse.Token()
 }
 
 // TokenClaims warms the reuse cache first (no-op if already warm), then returns
 // the claims cached inside the underlying token source.
 func (s *sharedTokenSource) TokenClaims() (*auth.TokenClaims, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, err := s.reuse.Token(); err != nil {
 		return nil, err
 	}
@@ -50,23 +101,19 @@ func (s *sharedTokenSource) TokenClaims() (*auth.TokenClaims, error) {
 
 // ClearTokenStore delegates to the underlying token source.
 func (s *sharedTokenSource) ClearTokenStore() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.inner.ClearTokenStore()
 }
 
-// wrapShared lets oauth2.NewClient do its normal setup (including context
-// transport), then extracts the ReuseTokenSource it created so we can share it.
-func wrapShared(ctx context.Context, ts auth.TokenSourceWithClaims) (*http.Client, *sharedTokenSource) {
-	httpClient := oauth2.NewClient(ctx, ts)
-	rts := httpClient.Transport.(*oauth2.Transport).Source
-	return httpClient, &sharedTokenSource{inner: ts, reuse: rts}
-}
-
 // WithTokenSource sets a pre-built TokenSourceWithClaims directly on the client.
-// The token source is used as-is, without the shared ReuseTokenSource wrapper, so
-// it is intended primarily for testing.
+// The token source is used as-is, without the shared ReuseTokenSource wrapper
+// and without attaching an Authorization header, so it is intended primarily
+// for testing.
 func WithTokenSource(ts auth.TokenSourceWithClaims) Option {
 	return func(c *client) {
 		c.tokenSource = ts
+		c.authFactory = nil
 	}
 }
 
@@ -77,11 +124,15 @@ func WithClientCredentialsFlow(
 	opts ...auth.ClientCredentialsConfigOption) Option {
 
 	return func(c *client) {
-		cc := auth.NewClientCredentialsConfig(clientID, clientSecret)
-		cc.With(opts...)
-		store := auth.NewTokenStore(cc.KeyRingServiceName(), cc.FallbackTokenStoreDir())
-		ts := auth.NewClientCredentialsKeyringTokenSource(ctx, cc, store)
-		c.httpClient, c.tokenSource = wrapShared(ctx, ts)
+		c.authCtx = ctx
+		c.authFactory = func(ctx context.Context) auth.TokenSourceWithClaims {
+			cc := auth.NewClientCredentialsConfig(clientID, clientSecret)
+			cc.With(opts...)
+			store := auth.NewTokenStore(cc.KeyRingServiceName(), cc.FallbackTokenStoreDir())
+			// store is only used to clear legacy entries; no replacement constructor exists.
+			return auth.NewClientCredentialsKeyringTokenSource(ctx, cc, store) //nolint:staticcheck
+		}
+		c.tokenSource = nil
 	}
 }
 
@@ -93,10 +144,90 @@ func WithDeviceFlow(
 	opts ...auth.DeviceFlowConfigOption) Option {
 
 	return func(c *client) {
-		cc := auth.NewDeviceFlowConfig()
-		cc.With(opts...)
-		store := auth.NewTokenStore(cc.KeyRingServiceName(), cc.FallbackTokenStoreDir())
-		ts := auth.NewDeviceKeyringTokenSource(ctx, cc, store)
-		c.httpClient, c.tokenSource = wrapShared(ctx, ts)
+		c.authCtx = ctx
+		c.authFactory = func(ctx context.Context) auth.TokenSourceWithClaims {
+			cc := auth.NewDeviceFlowConfig()
+			cc.With(opts...)
+			store := auth.NewTokenStore(cc.KeyRingServiceName(), cc.FallbackTokenStoreDir())
+			return auth.NewDeviceKeyringTokenSource(ctx, cc, store)
+		}
+		c.tokenSource = nil
 	}
+}
+
+// buildHTTPClient assembles the final http.Client from the base client and the
+// recorded auth/debug configuration.
+func (c *client) buildHTTPClient() {
+	base := c.httpClient
+	transport := base.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+
+	if c.debugTokens {
+		transport = &debugRoundTripper{inner: transport}
+	}
+
+	if c.authFactory != nil {
+		// Token endpoint requests use the base client (timeout, transport)
+		// but never the oauth2 transport itself.
+		tokenClient := &http.Client{
+			Transport: base.Transport,
+			Timeout:   base.Timeout,
+			Jar:       base.Jar,
+		}
+		ctx := c.authCtx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, tokenClient)
+		ts := c.authFactory(ctx)
+		shared := &sharedTokenSource{inner: ts, reuse: oauth2.ReuseTokenSource(nil, ts)}
+		c.tokenSource = shared
+		transport = &oauth2.Transport{Source: shared, Base: transport}
+	}
+
+	c.httpClient = &http.Client{
+		Transport:     transport,
+		Timeout:       base.Timeout,
+		Jar:           base.Jar,
+		CheckRedirect: chainCheckRedirect(base.CheckRedirect),
+	}
+}
+
+// chainCheckRedirect enforces safeCheckRedirect first and then applies a
+// CheckRedirect configured on the base client, if any.
+func chainCheckRedirect(next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if err := safeCheckRedirect(req, via); err != nil {
+			return err
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		return nil
+	}
+}
+
+// safeCheckRedirect only follows redirects to the same scheme and host as the
+// original request, and only over https (http only for loopback). Anything
+// else returns the redirect response unfollowed, so credentials never leave
+// the original origin.
+func safeCheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after %d redirects", len(via))
+	}
+	orig := via[0].URL
+	if req.URL.Scheme != orig.Scheme || !strings.EqualFold(req.URL.Host, orig.Host) {
+		return http.ErrUseLastResponse
+	}
+	switch req.URL.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(orig.Hostname()) {
+			return nil
+		}
+	}
+	return http.ErrUseLastResponse
 }

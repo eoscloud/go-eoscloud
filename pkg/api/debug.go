@@ -1,17 +1,17 @@
 package api
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
-
-	"golang.org/x/oauth2"
 )
 
-// debugRoundTripper prints the decoded JWT bearer token claims for every outgoing request.
+// debugRoundTripper prints a fingerprint and selected JWT claims for every outgoing request.
 // It must be placed inside the oauth2.Transport so it sees the Authorization header
 // that oauth2 injects before calling the underlying transport.
 type debugRoundTripper struct {
@@ -27,10 +27,18 @@ func (d *debugRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return d.inner.RoundTrip(req)
 }
 
+// tokenFingerprint returns a short SHA-256 based fingerprint of the token so
+// requests can be correlated without ever printing the token itself.
+func tokenFingerprint(rawToken string) string {
+	sum := sha256.Sum256([]byte(rawToken))
+	return "sha256:" + hex.EncodeToString(sum[:])[:12]
+}
+
 func printJWTClaims(method, url, rawToken string) {
+	fp := tokenFingerprint(rawToken)
 	parts := strings.Split(rawToken, ".")
 	if len(parts) != 3 {
-		fmt.Fprintf(os.Stderr, "[debug] Bearer token (not a JWT): %s\n", rawToken)
+		fmt.Fprintf(os.Stderr, "[debug] %s %s - bearer token (not a JWT) %s\n", method, url, fp)
 		return
 	}
 
@@ -46,32 +54,31 @@ func printJWTClaims(method, url, rawToken string) {
 		return
 	}
 
-	pretty, err := json.MarshalIndent(claims, "", "  ")
+	// Only print a minimal, non-sensitive subset of claims.
+	shown := map[string]any{}
+	for _, k := range []string{"eos", "exp", "iss", "sub"} {
+		if v, ok := claims[k]; ok {
+			shown[k] = v
+		}
+	}
+
+	pretty, err := json.MarshalIndent(shown, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[debug] Bearer token claims marshal error: %v\n", err)
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "[debug] %s %s — bearer token claims:\n%s\n", method, url, pretty)
+	fmt.Fprintf(os.Stderr, "[debug] %s %s - bearer token %s claims:\n%s\n", method, url, fp, pretty)
 }
 
-// WithDebugTokenPrinting wraps the HTTP transport to print decoded JWT bearer token
-// claims on every request. Apply this option after WithClientCredentialsFlow or
-// WithDeviceFlow so the oauth2 transport is already in place.
+// WithDebugTokenPrinting prints a SHA-256 fingerprint of the bearer token and
+// the claims eos, exp, iss and sub to stderr on every request. The raw token
+// is never printed.
+//
+// DEBUG ONLY: do not enable this in production; it writes identity
+// information to stderr. The option may be placed anywhere in the option list.
 func WithDebugTokenPrinting() Option {
 	return func(c *client) {
-		switch t := c.httpClient.Transport.(type) {
-		case *oauth2.Transport:
-			if t.Base == nil {
-				t.Base = http.DefaultTransport
-			}
-			t.Base = &debugRoundTripper{inner: t.Base}
-		default:
-			inner := c.httpClient.Transport
-			if inner == nil {
-				inner = http.DefaultTransport
-			}
-			c.httpClient.Transport = &debugRoundTripper{inner: inner}
-		}
+		c.debugTokens = true
 	}
 }
