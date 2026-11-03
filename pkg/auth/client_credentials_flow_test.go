@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,7 +85,6 @@ func TestNewClientCredentialsKeyringTokenSource(t *testing.T) {
 		expected := namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID)
 		assert.Equal(t, expected, ccts.tokenKey)
 		assert.NotEqual(t, DefaultClientCredentialsFlowTokenKey, ccts.tokenKey, "tokenKey must be namespaced, not the legacy fixed key")
-		assert.Equal(t, DefaultClientCredentialsFlowTokenKey, ccts.legacyKey)
 		assert.Equal(t, "https://myauth.example.com/oauth2/token", ccts.conf.TokenURL)
 		assert.Equal(t, "cid", ccts.conf.ClientID)
 		assert.Equal(t, "csecret", ccts.conf.ClientSecret)
@@ -94,102 +94,6 @@ func TestNewClientCredentialsKeyringTokenSource(t *testing.T) {
 		store := newMemoryStore()
 		c := NewClientCredentialsConfig("cid", "csecret")
 		var _ = NewClientCredentialsKeyringTokenSource(context.Background(), c, store)
-	})
-}
-
-func TestClientCredentialsKeyringTokenSource_loadFromKeyring(t *testing.T) {
-	t.Run("NotFound_ReturnsNil", func(t *testing.T) {
-		store := newMemoryStore()
-		s := &clientCredentialsKeyringTokenSource{
-
-			tokenKey: DefaultClientCredentialsFlowTokenKey,
-			store:    store,
-		}
-
-		token, err := s.loadFromKeyring()
-		assert.NoError(t, err)
-		assert.Nil(t, token)
-	})
-
-	t.Run("EmptyString_ReturnsNil", func(t *testing.T) {
-		store := newMemoryStore()
-		_ = store.Set(DefaultClientCredentialsFlowTokenKey, "")
-		s := &clientCredentialsKeyringTokenSource{
-
-			tokenKey: DefaultClientCredentialsFlowTokenKey,
-			store:    store,
-		}
-
-		token, err := s.loadFromKeyring()
-		assert.NoError(t, err)
-		assert.Nil(t, token)
-	})
-
-	t.Run("ValidToken_ReturnsToken", func(t *testing.T) {
-		store := newMemoryStore()
-		expected := &oauth2.Token{
-			AccessToken: "cc-access",
-			TokenType:   "Bearer",
-			Expiry:      time.Now().Add(time.Hour),
-		}
-		data, _ := json.Marshal(expected)
-		_ = store.Set(DefaultClientCredentialsFlowTokenKey, string(data))
-
-		s := &clientCredentialsKeyringTokenSource{
-
-			tokenKey: DefaultClientCredentialsFlowTokenKey,
-			store:    store,
-		}
-
-		token, err := s.loadFromKeyring()
-		require.NoError(t, err)
-		require.NotNil(t, token)
-		assert.Equal(t, "cc-access", token.AccessToken)
-		assert.Equal(t, "Bearer", token.TokenType)
-	})
-
-	t.Run("InvalidJSON_ReturnsError_DeletesEntry", func(t *testing.T) {
-		store := newMemoryStore()
-		_ = store.Set(DefaultClientCredentialsFlowTokenKey, "{bad json")
-
-		s := &clientCredentialsKeyringTokenSource{
-
-			tokenKey: DefaultClientCredentialsFlowTokenKey,
-			store:    store,
-		}
-
-		token, err := s.loadFromKeyring()
-		assert.Error(t, err)
-		assert.Nil(t, token)
-
-		_, getErr := store.Get(DefaultClientCredentialsFlowTokenKey)
-		assert.ErrorIs(t, getErr, ErrNotFound)
-	})
-}
-
-func TestClientCredentialsKeyringTokenSource_saveToKeyring(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		store := newMemoryStore()
-		s := &clientCredentialsKeyringTokenSource{
-
-			tokenKey: DefaultClientCredentialsFlowTokenKey,
-			store:    store,
-		}
-
-		token := &oauth2.Token{
-			AccessToken: "saved-cc",
-			TokenType:   "Bearer",
-		}
-
-		err := s.saveToKeyring(token)
-		require.NoError(t, err)
-
-		stored, getErr := store.Get(DefaultClientCredentialsFlowTokenKey)
-		require.NoError(t, getErr)
-
-		var loaded oauth2.Token
-		require.NoError(t, json.Unmarshal([]byte(stored), &loaded))
-		assert.Equal(t, "saved-cc", loaded.AccessToken)
 	})
 }
 
@@ -216,55 +120,41 @@ func TestClientCredentialsKeyringTokenSource_Token(t *testing.T) {
 		require.NotNil(t, token)
 		assert.Equal(t, freshJWT, token.AccessToken)
 
-		// Verify token was persisted under the namespaced key (not the legacy key).
-		namespacedKey := namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID)
-		stored, getErr := store.Get(namespacedKey)
-		require.NoError(t, getErr)
-		assert.NotEmpty(t, stored)
+		// SDK-13: client credentials tokens are never persisted.
+		assert.Empty(t, store.data, "client credentials token must stay in memory")
 	})
 
-	t.Run("ValidStoredToken_ReturnsCached", func(t *testing.T) {
-		cachedJWT := makeTestJWT(map[string]any{
+	t.Run("InMemoryToken_ReusedWithoutServerCall", func(t *testing.T) {
+		jwt := makeTestJWT(map[string]any{
 			"eos": map[string]any{"realm": "realm-cached", "org": "org-cached"},
 		})
 
-		// Server should NOT be called if cached token is still valid.
-		serverCalled := false
+		var calls atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			serverCalled = true
-			w.WriteHeader(http.StatusInternalServerError)
+			calls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"access_token":%q,"token_type":"Bearer","expires_in":3600}`, jwt)
 		}))
 		defer srv.Close()
 
 		c := NewClientCredentialsConfig("cid", "csecret")
 		c.With(WithClientCredentialsAuthBaseURL(srv.URL))
 
-		store := newMemoryStore()
-		validToken := &oauth2.Token{
-			AccessToken: cachedJWT,
-			TokenType:   "Bearer",
-			Expiry:      time.Now().Add(time.Hour),
-		}
-		data, _ := json.Marshal(validToken)
-		_ = store.Set(namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID), string(data))
-
-		ts := NewClientCredentialsKeyringTokenSource(context.Background(), c, store)
-		token, err := ts.Token()
+		ts := NewClientCredentialsKeyringTokenSource(context.Background(), c, newMemoryStore())
+		_, err := ts.Token()
 		require.NoError(t, err)
-		require.NotNil(t, token)
-		assert.Equal(t, cachedJWT, token.AccessToken)
-		assert.False(t, serverCalled, "server should not be called for a valid cached token")
+		_, err = ts.Token()
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), calls.Load(), "second call must reuse the in-memory token")
 	})
 
-	t.Run("ExpiredStoredToken_FetchesNew", func(t *testing.T) {
-		renewedJWT := makeTestJWT(map[string]any{
-			"eos": map[string]any{"realm": "realm-renewed", "org": "org-renewed"},
+	t.Run("StoredToken_IsIgnored", func(t *testing.T) {
+		freshJWT := makeTestJWT(map[string]any{
+			"eos": map[string]any{"realm": "realm-fresh", "org": "org-fresh"},
 		})
-
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprintf(w, `{"access_token":%q,"token_type":"Bearer","expires_in":3600}`, renewedJWT)
+			_, _ = fmt.Fprintf(w, `{"access_token":%q,"token_type":"Bearer","expires_in":3600}`, freshJWT)
 		}))
 		defer srv.Close()
 
@@ -272,19 +162,20 @@ func TestClientCredentialsKeyringTokenSource_Token(t *testing.T) {
 		c.With(WithClientCredentialsAuthBaseURL(srv.URL))
 
 		store := newMemoryStore()
-		expiredToken := &oauth2.Token{
-			AccessToken: "old-token",
-			TokenType:   "Bearer",
-			Expiry:      time.Now().Add(-time.Hour),
-		}
-		data, _ := json.Marshal(expiredToken)
-		_ = store.Set(namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID), string(data))
+		key := namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID)
+		data, _ := json.Marshal(&oauth2.Token{AccessToken: "persisted", Expiry: time.Now().Add(time.Hour)})
+		_ = store.Set(key, string(data))
+		_ = store.Set(DefaultClientCredentialsFlowTokenKey, "{corrupt")
 
 		ts := NewClientCredentialsKeyringTokenSource(context.Background(), c, store)
 		token, err := ts.Token()
 		require.NoError(t, err)
-		require.NotNil(t, token)
-		assert.Equal(t, renewedJWT, token.AccessToken)
+		assert.Equal(t, freshJWT, token.AccessToken)
+		assert.Equal(t, string(data), store.data[key], "store must not be written")
+
+		require.NoError(t, ts.ClearTokenStore())
+		_, err = store.Get(key)
+		assert.ErrorIs(t, err, ErrNotFound, "ClearTokenStore removes legacy persisted entry")
 	})
 
 	t.Run("TokenMissingEosClaims_ReturnsError", func(t *testing.T) {
@@ -306,21 +197,6 @@ func TestClientCredentialsKeyringTokenSource_Token(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, token)
 		assert.Contains(t, err.Error(), "eos claims")
-	})
-
-	t.Run("CorruptStoredToken_ReturnsError", func(t *testing.T) {
-		c := NewClientCredentialsConfig("cid", "csecret")
-		c.With(WithClientCredentialsAuthBaseURL("https://unused.example.com"))
-
-		store := newMemoryStore()
-		// Store corrupt JSON under the namespaced key; corrupt legacy entries are
-		// silently skipped by the read-only fallback.
-		_ = store.Set(namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID), "{corrupt")
-
-		ts := NewClientCredentialsKeyringTokenSource(context.Background(), c, store)
-		token, err := ts.Token()
-		assert.Error(t, err)
-		assert.Nil(t, token)
 	})
 
 	t.Run("FetchNewToken_ServerError", func(t *testing.T) {

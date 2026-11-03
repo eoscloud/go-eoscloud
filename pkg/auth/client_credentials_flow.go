@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -69,79 +71,39 @@ func NewClientCredentialsConfig(clientID, clientSecret string) *ClientCredential
 	return &ClientCredentialsConfig{SharedFlowConfig: cfg, clientSecret: clientSecret}
 }
 
+// clientCredentialsKeyringTokenSource keeps the client-credentials token in
+// memory only. The grant has no refresh token and a new token can be fetched
+// at any time with the client secret, so persisting it would only widen the
+// exposure of a bearer credential.
 type clientCredentialsKeyringTokenSource struct {
 	ctx                    context.Context
-	tokenKey               string // namespaced primary key
-	legacyKey              string // legacy fixed key (read-only fallback)
-	authBaseURL            string // used to validate legacy token issuer before adopting
+	tokenKey               string // namespaced key, only used to clean up entries persisted by older versions
 	store                  TokenStore
 	conf                   *clientcredentials.Config
-	cachedClaims           *TokenClaims
 	allowOrganizationScope bool
+	initErr                error // configuration error surfaced by Token()
+
+	mu           sync.Mutex // guards token and serializes fetches
+	token        *oauth2.Token
+	cachedClaims atomic.Pointer[TokenClaims]
 }
 
+// ClearTokenStore drops the in-memory token and, best effort, removes a token
+// entry persisted under this flow's namespaced key by older versions.
 func (s *clientCredentialsKeyringTokenSource) ClearTokenStore() error {
-	return s.store.DeleteAll()
-}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func (s *clientCredentialsKeyringTokenSource) loadFromKeyring() (*oauth2.Token, error) {
-	// Try the primary (namespaced) key first.
-	stored, err := s.store.Get(s.tokenKey)
-	if err == nil && stored != "" {
-		var token oauth2.Token
-		if err := json.Unmarshal([]byte(stored), &token); err != nil {
-			_ = s.store.Delete(s.tokenKey)
-			return nil, err
-		}
-		return &token, nil
+	s.token = nil
+	s.cachedClaims.Store(nil)
+
+	if s.store == nil {
+		return nil
 	}
-
-	// Primary key miss — attempt read-only fallback to the legacy fixed key.
-	return s.loadLegacyToken()
-}
-
-// loadLegacyToken reads the legacy fixed-key entry and adopts it only when its
-// issuer matches the current authBaseURL. On adoption the token is migrated to
-// the namespaced key and the legacy entry is deleted, so it is evaluated at
-// most once. A legacy entry that is absent, unparseable, or issued by a
-// different auth server is left untouched.
-func (s *clientCredentialsKeyringTokenSource) loadLegacyToken() (*oauth2.Token, error) {
-	legacyStored, err := s.store.Get(s.legacyKey)
-	if err != nil || legacyStored == "" {
-		return nil, nil //nolint:nilnil // nil token signals "not found", distinct from an error
-	}
-
-	var legacyToken oauth2.Token
-	if err := json.Unmarshal([]byte(legacyStored), &legacyToken); err != nil {
-		// Unparseable legacy entry — skip adoption without deleting it.
-		return nil, nil //nolint:nilnil
-	}
-
-	issuer, err := tokenIssuer(&legacyToken)
-	if err != nil || !issuerMatchesAuthBaseURL(issuer, s.authBaseURL) {
-		// Issuer absent, unparseable, or belongs to a different auth server.
-		return nil, nil //nolint:nilnil
-	}
-
-	// Adopt and migrate: persist the token under the namespaced key and delete
-	// the legacy entry so it is not re-evaluated on subsequent runs. If the
-	// namespaced write fails we keep the legacy entry as a fallback and delete
-	// nothing. Once the legacy entry is removed, downgrading to an older tool
-	// version requires a one-time re-authentication, which is acceptable.
-	if err := s.store.Set(s.tokenKey, legacyStored); err == nil {
-		_ = s.store.Delete(s.legacyKey)
-	}
-	return &legacyToken, nil
-}
-
-func (s *clientCredentialsKeyringTokenSource) saveToKeyring(token *oauth2.Token) error {
-	data, err := json.Marshal(token) //nolint:gosec // the token is stored in the keyring or token store on purpose
-	if err != nil {
-		_ = s.store.Delete(s.tokenKey)
+	if err := s.store.Delete(s.tokenKey); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
-
-	return s.store.Set(s.tokenKey, string(data))
+	return nil
 }
 
 func (s *clientCredentialsKeyringTokenSource) fetchNewToken() (*oauth2.Token, error) {
@@ -149,19 +111,20 @@ func (s *clientCredentialsKeyringTokenSource) fetchNewToken() (*oauth2.Token, er
 }
 
 func (s *clientCredentialsKeyringTokenSource) Token() (*oauth2.Token, error) {
-	token, err := s.loadFromKeyring()
-	if err != nil {
-		return nil, err
+	if s.initErr != nil {
+		return nil, s.initErr
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Re-grant when there is no cached token, the token is expired, or it is
 	// within the proactive refresh buffer (shared with the device flow).
+	token := s.token
 	if token == nil || !token.Valid() || nearExpiry(token) {
+		var err error
 		token, err = s.fetchNewToken()
 		if err != nil {
-			return nil, err
-		}
-		if err := s.saveToKeyring(token); err != nil {
 			return nil, err
 		}
 	}
@@ -174,32 +137,53 @@ func (s *clientCredentialsKeyringTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("JWT token missing eos.realm claim")
 	}
 
-	s.cachedClaims = claims
+	s.token = token
+	s.cachedClaims.Store(claims)
 
 	return token, nil
 }
 
 func (s *clientCredentialsKeyringTokenSource) TokenClaims() (*TokenClaims, error) {
-	if s.cachedClaims != nil {
-		return s.cachedClaims, nil
+	if c := s.cachedClaims.Load(); c != nil {
+		cp := *c
+		return &cp, nil
 	}
 	if _, err := s.Token(); err != nil {
 		return nil, err
 	}
-	return s.cachedClaims, nil
+	c := s.cachedClaims.Load()
+	if c == nil {
+		return nil, errors.New("token claims unavailable")
+	}
+	cp := *c
+	return &cp, nil
 }
 
-// NewClientCredentialsKeyringTokenSource returns a TokenSourceWithClaims that persists tokens using
-// the given TokenStore. On the first call or after token expiry, it fetches a new token via client
-// credentials grant. EOS claims (realm, org) are extracted and cached inside Token().
+// NewClientCredentialsKeyringTokenSource returns a TokenSourceWithClaims that fetches tokens via the
+// client credentials grant and caches them in memory only. EOS claims (realm, org) are extracted and
+// cached inside Token().
+//
+// Deprecated: the store parameter is unused for new tokens. Client credentials
+// tokens are no longer persisted to the keyring or token file (there is no
+// refresh token, and a new token can always be requested). The store, which
+// may be nil, is only used by ClearTokenStore to remove entries written by
+// older versions. The constructor name is kept for compatibility.
+//
+// The auth base URL must be https (http only for loopback hosts); an invalid
+// URL is reported as an error from Token() and TokenClaims(). The context is
+// kept for the lifetime of the source but detached from cancellation (its
+// values, such as oauth2.HTTPClient, are preserved).
 func NewClientCredentialsKeyringTokenSource(ctx context.Context, c *ClientCredentialsConfig, store TokenStore) TokenSourceWithClaims {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	return &clientCredentialsKeyringTokenSource{
-		ctx:                    ctx,
+		ctx:                    context.WithoutCancel(ctx),
 		tokenKey:               namespacedTokenKey(DefaultClientCredentialsFlowTokenKey, c.authBaseURL, c.clientID),
-		legacyKey:              DefaultClientCredentialsFlowTokenKey,
-		authBaseURL:            c.authBaseURL,
 		store:                  store,
 		conf:                   c.GetClientCredentialsConfig(),
 		allowOrganizationScope: c.allowOrganizationScope,
+		initErr:                validateAuthBaseURL(c.authBaseURL),
 	}
 }

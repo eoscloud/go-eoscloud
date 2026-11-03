@@ -49,7 +49,7 @@ func TestDefaultTokenStoreDir(t *testing.T) {
 		assert.Equal(t, filepath.Join(xdg, "eosctl", "tokens"), DefaultTokenStoreDir())
 	})
 
-	t.Run("NoConfigDir_FallsBackToTempDir", func(t *testing.T) {
+	t.Run("NoConfigDir_ReturnsEmpty", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("config dir derives from %AppData% on windows")
 		}
@@ -57,8 +57,8 @@ func TestDefaultTokenStoreDir(t *testing.T) {
 		t.Setenv("HOME", "")
 		t.Setenv("XDG_CONFIG_HOME", "")
 
-		assert.Equal(t, filepath.Join(os.TempDir(), "eosctl", "tokens"), DefaultTokenStoreDir(),
-			"file-based storage should stay available when no config dir is resolvable")
+		assert.Empty(t, DefaultTokenStoreDir(),
+			"no unsafe fallback location (e.g. the temp dir) may be invented")
 	})
 
 	t.Run("RelativeXDGConfigHome_IsIgnored", func(t *testing.T) {
@@ -70,10 +70,9 @@ func TestDefaultTokenStoreDir(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "relative/config")
 
 		dir := DefaultTokenStoreDir()
-		assert.True(t, filepath.IsAbs(dir), "must never return a cwd-relative path, got %q", dir)
 		assert.NotContains(t, dir, "relative/config",
 			"relative XDG base dirs must be ignored, not resolved against the cwd")
-		assert.Equal(t, filepath.Join(os.TempDir(), "eosctl", "tokens"), dir)
+		assert.Empty(t, dir)
 	})
 }
 
