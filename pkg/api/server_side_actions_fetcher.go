@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strings"
 
 	"go.eoscloud.io/go-eoscloud/eoscloud/common/model"
 )
@@ -20,16 +19,20 @@ type serverSideActionsFetcher struct {
 	pathParams      map[string]string
 }
 
-func (a *serverSideActionsFetcher) buildPathWithId(id string) string {
-	return strings.Join([]string{strings.TrimRight(a.basePathPattern, "/"), id}, "/") + "/"
+func (a *serverSideActionsFetcher) buildPathWithId(id string) (string, error) {
+	return joinIDPath(a.basePathPattern, id)
 }
 
 func (a *serverSideActionsFetcher) Actions(ctx context.Context, id string) (result *model.ObjectOptionsResponse, err error) {
+	path, pathErr := a.buildPathWithId(id)
+	if pathErr != nil {
+		return nil, pathErr
+	}
 	var decoded model.ObjectOptionsResponse
 	v, err := a.h.Call(ctx, &CallRequest{
 		Method:      OPTIONS,
 		Service:     a.serviceName,
-		Path:        a.buildPathWithId(id),
+		Path:        path,
 		PathParams:  a.pathParams,
 		Query:       url.Values{},
 		Encoder:     NoBodyEncoder(),

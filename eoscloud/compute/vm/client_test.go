@@ -441,3 +441,22 @@ func TestVMClient_Error(t *testing.T) {
 		assert.Nil(t, result)
 	})
 }
+
+func TestVMClient_Console_RejectsBadWebSocketURL(t *testing.T) {
+	for _, consoleURL := range []string{
+		"wss://evil.example/ws",  // host mismatch
+		"ws://evil.example/ws",   // insecure scheme
+		"https://example.com/ws", // wrong scheme
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"console_url": consoleURL})
+		}))
+		c := newVMClient(srv.URL)
+		id := "123"
+		_, _, err := c.Console(context.Background(), &id, &model.VMConsoleRequestRequest{}, nil, nil)
+		assert.Error(t, err, consoleURL)
+		srv.Close()
+	}
+}

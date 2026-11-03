@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -47,8 +48,8 @@ func (m *memoryStore) DeleteAll() error {
 
 func TestMain(m *testing.M) {
 	// Prevent tests from opening a real browser.
-	openBrowserFunc = func(_ string) {}
-	m.Run()
+	openBrowserFunc = func(_ string) error { return nil }
+	os.Exit(m.Run())
 }
 
 func TestNewDeviceFlowConfig(t *testing.T) {

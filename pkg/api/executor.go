@@ -21,19 +21,27 @@ type executor[I, O any] struct {
 	statusCheck     HTTPStatusCheck
 }
 
-func (e *executor[I, O]) buildPathWithId(id *string) string {
+func (e *executor[I, O]) buildPathWithId(id *string) (string, error) {
 	if id == nil {
-		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action
+		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action, nil
 	}
-	return strings.Join([]string{strings.TrimRight(e.basePathPattern, "/"), *id}, "/") + "/:" + e.action
+	p, err := joinIDPath(e.basePathPattern, *id)
+	if err != nil {
+		return "", err
+	}
+	return p + ":" + e.action, nil
 }
 
 func (e *executor[I, O]) Execute(ctx context.Context, id *string, input *I) (output *O, err error) {
+	path, pathErr := e.buildPathWithId(id)
+	if pathErr != nil {
+		return nil, pathErr
+	}
 	var decoded O
 	v, err := e.h.Call(ctx, &CallRequest{
 		Method:      e.method,
 		Service:     e.serviceName,
-		Path:        e.buildPathWithId(id),
+		Path:        path,
 		PathParams:  e.pathParams,
 		Query:       url.Values{},
 		Encoder:     NewJSONEncoder[I](input),
@@ -90,18 +98,26 @@ type noResultExecutor[I any] struct {
 	statusCheck     HTTPStatusCheck
 }
 
-func (e *noResultExecutor[I]) buildPathWithId(id *string) string {
+func (e *noResultExecutor[I]) buildPathWithId(id *string) (string, error) {
 	if id == nil {
-		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action
+		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action, nil
 	}
-	return strings.Join([]string{strings.TrimRight(e.basePathPattern, "/"), *id}, "/") + "/:" + e.action
+	p, err := joinIDPath(e.basePathPattern, *id)
+	if err != nil {
+		return "", err
+	}
+	return p + ":" + e.action, nil
 }
 
 func (e *noResultExecutor[I]) Execute(ctx context.Context, id *string, input *I) (err error) {
+	path, pathErr := e.buildPathWithId(id)
+	if pathErr != nil {
+		return pathErr
+	}
 	v, err := e.h.Call(ctx, &CallRequest{
 		Method:      e.method,
 		Service:     e.serviceName,
-		Path:        e.buildPathWithId(id),
+		Path:        path,
 		PathParams:  e.pathParams,
 		Query:       url.Values{},
 		Encoder:     NewJSONEncoder[I](input),
@@ -153,19 +169,27 @@ type noInputExecutor[O any] struct {
 	statusCheck     HTTPStatusCheck
 }
 
-func (e *noInputExecutor[O]) buildPathWithId(id *string) string {
+func (e *noInputExecutor[O]) buildPathWithId(id *string) (string, error) {
 	if id == nil {
-		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action
+		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action, nil
 	}
-	return strings.Join([]string{strings.TrimRight(e.basePathPattern, "/"), *id}, "/") + "/:" + e.action
+	p, err := joinIDPath(e.basePathPattern, *id)
+	if err != nil {
+		return "", err
+	}
+	return p + ":" + e.action, nil
 }
 
 func (e *noInputExecutor[O]) Execute(ctx context.Context, id *string) (o *O, err error) {
+	path, pathErr := e.buildPathWithId(id)
+	if pathErr != nil {
+		return nil, pathErr
+	}
 	var decoded O
 	v, err := e.h.Call(ctx, &CallRequest{
 		Method:      e.method,
 		Service:     e.serviceName,
-		Path:        e.buildPathWithId(id),
+		Path:        path,
 		PathParams:  e.pathParams,
 		Query:       url.Values{},
 		Encoder:     NoBodyEncoder(),
@@ -221,18 +245,26 @@ type noIOExecutor struct {
 	statusCheck     HTTPStatusCheck
 }
 
-func (e *noIOExecutor) buildPathWithId(id *string) string {
+func (e *noIOExecutor) buildPathWithId(id *string) (string, error) {
 	if id == nil {
-		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action
+		return strings.TrimRight(e.basePathPattern, "/") + "/:" + e.action, nil
 	}
-	return strings.Join([]string{strings.TrimRight(e.basePathPattern, "/"), *id}, "/") + "/:" + e.action
+	p, err := joinIDPath(e.basePathPattern, *id)
+	if err != nil {
+		return "", err
+	}
+	return p + ":" + e.action, nil
 }
 
 func (e *noIOExecutor) Execute(ctx context.Context, id *string) (err error) {
+	path, pathErr := e.buildPathWithId(id)
+	if pathErr != nil {
+		return pathErr
+	}
 	_, callErr := e.h.Call(ctx, &CallRequest{
 		Method:      e.method,
 		Service:     e.serviceName,
-		Path:        e.buildPathWithId(id),
+		Path:        path,
 		PathParams:  e.pathParams,
 		Query:       url.Values{},
 		Encoder:     NoBodyEncoder(),

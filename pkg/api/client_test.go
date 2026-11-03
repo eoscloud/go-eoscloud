@@ -253,7 +253,7 @@ func TestClient_ClearKeyringOnAuthError(t *testing.T) {
 		// still clear the store, as it indicates corrupted/unusable credentials.
 		fts := &fakeTokenSource{}
 		rt := &fakeRoundTripper{
-			err: errors.New("oauth2: token expired and refresh token is not set"),
+			err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: 400}, ErrorCode: "invalid_grant"},
 		}
 		hc := &http.Client{Transport: rt}
 		cli := NewClient(
@@ -296,4 +296,16 @@ func TestClient_TokenClaims(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, claims)
 	})
+}
+
+func TestHandleResponseStatusError_TruncatesBody(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: 502,
+		Body:       io.NopCloser(strings.NewReader(strings.Repeat("a", 100000))),
+	}
+	err := handleResponseStatusError(resp, GET, "https://x/")
+	var ue *UnexpectedHttpStatusError
+	require.True(t, errors.As(err, &ue))
+	assert.LessOrEqual(t, len(ue.Body), maxErrorBodyBytes+len("...(truncated)"))
+	assert.True(t, strings.HasSuffix(ue.Body, "(truncated)"))
 }

@@ -2,9 +2,12 @@ package vm
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/coder/websocket"
 	commonmodel "go.eoscloud.io/go-eoscloud/eoscloud/common/model"
@@ -55,6 +58,8 @@ type client struct {
 	execExecutor    api.Executor[model.VMExecRequest, model.VMExec]
 	stats           api.NoInputExecutor[commonmodel.Statistics]
 	userAgent       string
+	caller          api.Caller
+	service         string
 }
 
 func (c *client) PowerOn(ctx context.Context, id *string, input *model.VMPowerActionRequest) (*model.VMDetail, error) {
@@ -103,6 +108,52 @@ func (c *client) withUserAgent(h http.Header) http.Header {
 	return out
 }
 
+// validateWebSocketURL checks a server-provided WebSocket URL before dialing.
+// The scheme must be wss (ws only for loopback hosts). If the underlying
+// Caller exposes its configured service host (api.ServiceHostProvider, as the
+// client from api.NewClient does), the URL host must equal that host.
+// For custom Callers that do not expose a host, only the scheme is checked.
+func (c *client) validateWebSocketURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid websocket URL: %w", err)
+	}
+	switch u.Scheme {
+	case "wss":
+	case "ws":
+		if !isLoopback(u.Hostname()) {
+			return fmt.Errorf("refusing insecure websocket URL scheme %q for host %q", u.Scheme, u.Hostname())
+		}
+	default:
+		return fmt.Errorf("unsupported websocket URL scheme %q", u.Scheme)
+	}
+	if hp, ok := c.caller.(api.ServiceHostProvider); ok {
+		host, err := hp.ServiceHost(c.service)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(u.Host, host) {
+			return fmt.Errorf("websocket host %q does not match API host %q", u.Host, host)
+		}
+	}
+	return nil
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func (c *client) dial(ctx context.Context, rawURL string, opts *websocket.DialOptions) (*websocket.Conn, *http.Response, error) {
+	if err := c.validateWebSocketURL(rawURL); err != nil {
+		return nil, nil, err
+	}
+	return websocket.Dial(ctx, rawURL, opts)
+}
+
 func (c *client) Console(
 	ctx context.Context,
 	vmID *string,
@@ -115,7 +166,7 @@ func (c *client) Console(
 		return nil, nil, err
 	}
 
-	wsc, _, err := websocket.Dial(ctx, response.ConsoleURL, &websocket.DialOptions{HTTPHeader: c.withUserAgent(httpHeader)})
+	wsc, _, err := c.dial(ctx, response.ConsoleURL, &websocket.DialOptions{HTTPHeader: c.withUserAgent(httpHeader)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -135,7 +186,7 @@ func (c *client) Exec(
 		return nil, nil, err
 	}
 
-	wsc, _, err := websocket.Dial(ctx, response.ConsoleURL, &websocket.DialOptions{HTTPHeader: c.withUserAgent(httpHeader)})
+	wsc, _, err := c.dial(ctx, response.ConsoleURL, &websocket.DialOptions{HTTPHeader: c.withUserAgent(httpHeader)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,6 +207,8 @@ func NewClient(
 
 	return &client{
 		userAgent: api.UserAgent(c),
+		caller:    c,
+		service:   service,
 		CRUDClient: api.NewCRUDClient[
 			model.ListVM,
 			model.VMRequest,

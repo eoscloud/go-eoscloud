@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"net/url"
-	"strings"
 )
 
 type Deleter interface {
@@ -17,16 +16,20 @@ type deleter struct {
 	pathParams      map[string]string
 }
 
-func (d *deleter) buildPathWithId(id string) string {
-	return strings.Join([]string{strings.TrimRight(d.basePathPattern, "/"), id}, "/") + "/"
+func (d *deleter) buildPathWithId(id string) (string, error) {
+	return joinIDPath(d.basePathPattern, id)
 }
 
 func (d *deleter) Delete(ctx context.Context, id string) error {
+	path, pathErr := d.buildPathWithId(id)
+	if pathErr != nil {
+		return pathErr
+	}
 
 	_, callErr := d.h.Call(ctx, &CallRequest{
 		Method:      DELETE,
 		Service:     d.serviceName,
-		Path:        d.buildPathWithId(id),
+		Path:        path,
 		PathParams:  d.pathParams,
 		Query:       url.Values{},
 		Encoder:     NoBodyEncoder(),

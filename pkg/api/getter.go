@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strings"
 )
 
 type Getter[D any] interface {
@@ -18,16 +17,20 @@ type getter[D any] struct {
 	pathParams      map[string]string
 }
 
-func (g *getter[D]) buildPathWithId(id string) string {
-	return strings.Join([]string{strings.TrimRight(g.basePathPattern, "/"), id}, "/") + "/"
+func (g *getter[D]) buildPathWithId(id string) (string, error) {
+	return joinIDPath(g.basePathPattern, id)
 }
 
 func (g *getter[D]) Get(ctx context.Context, id string, filter url.Values) (result *D, err error) {
+	path, pathErr := g.buildPathWithId(id)
+	if pathErr != nil {
+		return nil, pathErr
+	}
 	var decoded D
 	v, err := g.h.Call(ctx, &CallRequest{
 		Method:      GET,
 		Service:     g.serviceName,
-		Path:        g.buildPathWithId(id),
+		Path:        path,
 		PathParams:  g.pathParams,
 		Query:       filter,
 		Encoder:     NoBodyEncoder(),

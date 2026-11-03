@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"go.eoscloud.io/go-eoscloud/eoscloud/common/model"
 	"go.eoscloud.io/go-eoscloud/pkg/auth"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -32,6 +34,13 @@ var (
 		429,
 		500,
 	}
+)
+
+const (
+	// maxErrorBodyBytes limits the body kept in UnexpectedHttpStatusError.
+	maxErrorBodyBytes = 4 << 10
+	// maxAPIErrorBytes limits structured API error bodies.
+	maxAPIErrorBytes = 64 << 10
 )
 
 type RequestModifier func(req *http.Request)
@@ -71,6 +80,13 @@ type client struct {
 	// userAgentApp is the optional "name/version" set via WithUserAgent.
 	userAgentApp string
 	userAgent    string
+
+	// optErr records an invalid option (e.g. bad base URL); returned by Call.
+	optErr error
+	// authFactory builds the token source once the final base client is known.
+	authFactory func(ctx context.Context) auth.TokenSourceWithClaims
+	authCtx     context.Context
+	debugTokens bool
 }
 
 // resolvePathParams merges the caller-supplied pathParams with realm_id sourced
@@ -99,25 +115,54 @@ func (c *client) resolvePathParams(base map[string]string) (map[string]string, e
 	return merged, nil
 }
 
+// ServiceHostProvider is optionally implemented by a Caller to report the
+// host (host[:port]) it uses for a given service. It allows callers to verify
+// that server-provided URLs point to the configured API host.
+type ServiceHostProvider interface {
+	ServiceHost(service string) (string, error)
+}
+
+var _ ServiceHostProvider = (*client)(nil)
+
+// ServiceHost returns the host[:port] of the configured base URL for service.
+func (c *client) ServiceHost(service string) (string, error) {
+	if c.optErr != nil {
+		return "", c.optErr
+	}
+	u, err := url.Parse(c.buildServiceBaseURL(service))
+	if err != nil {
+		return "", err
+	}
+	return u.Host, nil
+}
+
 func (c *client) buildServiceBaseURL(service string) string {
 	return strings.ReplaceAll(c.baseURL, "{service}", url.PathEscape(service))
+}
+
+func defaultHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
 }
 
 // NewClient creates a new API client.
 func NewClient(opts ...Option) Caller {
 	c := &client{
-		baseURL: BaseURLPattern,
-		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: 20,
-				IdleConnTimeout:     90 * time.Second,
-			},
-		},
+		baseURL:    BaseURLPattern,
+		httpClient: defaultHTTPClient(),
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
+	if c.httpClient == nil {
+		c.httpClient = defaultHTTPClient()
+	}
+	c.buildHTTPClient()
 	c.userAgent = buildUserAgent(c.userAgentApp)
 	return c
 }
@@ -147,16 +192,15 @@ func (c *client) clearKeyringOnAuthError(err error, _ int) {
 	// new access token on the next call. Wiping the store on every 401 would
 	// destroy the refresh token and force unnecessary interactive re-logins.
 	//
-	// We only clear the store when the oauth2 transport itself surfaces an
-	// oauth2 error during token acquisition (e.g. a network error talking to
-	// the token endpoint), which signals a problem with the stored credentials
-	// rather than a transient API response. Recovery from invalid_grant (dead
-	// refresh token) is handled inside the token source itself.
+	// We only clear the store when token acquisition fails with an oauth2
+	// invalid_grant error (dead refresh token / revoked credentials).
+	// Transient failures (network errors, 5xx, 429) must not clear it.
 	if c.tokenSource == nil {
 		return
 	}
 
-	if err != nil && strings.Contains(err.Error(), "oauth2:") {
+	var re *oauth2.RetrieveError
+	if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
 		_ = c.tokenSource.ClearTokenStore()
 	}
 }
@@ -164,16 +208,19 @@ func (c *client) clearKeyringOnAuthError(err error, _ int) {
 func handleResponseStatusError(resp *http.Response, method Method, requestURL string) error {
 	if slices.Contains(AllowedErrorStatusCodes, resp.StatusCode) {
 		var r model.APIError
-		if decErr := json.NewDecoder(resp.Body).Decode(&r); decErr != nil {
+		if decErr := json.NewDecoder(io.LimitReader(resp.Body, maxAPIErrorBytes)).Decode(&r); decErr != nil {
 			return decErr
 		}
 		r.StatusCode = resp.StatusCode
 		return &r
 	}
 
-	bodyBytes, readErr := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
 	if readErr != nil {
 		return readErr
+	}
+	if len(bodyBytes) > maxErrorBodyBytes {
+		bodyBytes = append(bodyBytes[:maxErrorBodyBytes], "...(truncated)"...)
 	}
 	return &UnexpectedHttpStatusError{
 		StatusCode: resp.StatusCode,
@@ -197,6 +244,9 @@ type CallRequest struct {
 
 // Call performs the HTTP request described by the given CallRequest.
 func (c *client) Call(ctx context.Context, r *CallRequest) (any, error) {
+	if c.optErr != nil {
+		return nil, c.optErr
+	}
 	pathParams, err := c.resolvePathParams(r.PathParams)
 	if err != nil {
 		return nil, err

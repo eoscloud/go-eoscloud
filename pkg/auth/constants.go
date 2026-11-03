@@ -49,12 +49,11 @@ func namespacedTokenKey(legacyBase, authBaseURL, clientID string) string {
 // A relative XDG_CONFIG_HOME is rejected rather than resolved against the
 // current working directory, as the spec requires.
 //
-// When no user config directory can be determined at all — $HOME and
-// XDG_CONFIG_HOME both unset, as in some containers, systemd units and CI
-// runners — it falls back to <tempdir>/eosctl/tokens so that file-based
-// storage keeps working. That path is predictable and lives in a shared
-// directory, so the fallback trades isolation for availability; the keyring
-// remains the preferred backend (see NewTokenStore).
+// When no user config directory can be determined at all ($HOME and
+// XDG_CONFIG_HOME both unset) it returns the empty string. There is
+// deliberately no fallback to a shared, predictable location such as the
+// temp directory: the file-based token store reports an error in that case
+// unless a directory is configured explicitly (see ErrNoTokenDir).
 func DefaultTokenStoreDir() string {
 	// os.UserConfigDir returns XDG_CONFIG_HOME verbatim on XDG platforms
 	// without requiring it to be absolute; the spec says relative base
@@ -70,5 +69,5 @@ func DefaultTokenStoreDir() string {
 		return filepath.Join(dir, defaultConfigDirName, defaultTokenStoreFileName)
 	}
 
-	return filepath.Join(os.TempDir(), defaultConfigDirName, defaultTokenStoreFileName)
+	return ""
 }

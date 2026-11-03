@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strings"
 )
 
 type PartialUpdater[P, D any] interface {
@@ -18,16 +17,20 @@ type partialUpdater[P, D any] struct {
 	pathParams      map[string]string
 }
 
-func (p *partialUpdater[P, D]) buildPathWithId(id string) string {
-	return strings.Join([]string{strings.TrimRight(p.basePathPattern, "/"), id}, "/") + "/"
+func (p *partialUpdater[P, D]) buildPathWithId(id string) (string, error) {
+	return joinIDPath(p.basePathPattern, id)
 }
 
 func (p *partialUpdater[P, D]) UpdatePartial(ctx context.Context, id string, object *P) (result *D, err error) {
+	path, pathErr := p.buildPathWithId(id)
+	if pathErr != nil {
+		return nil, pathErr
+	}
 	var decoded D
 	v, err := p.h.Call(ctx, &CallRequest{
 		Method:      PATCH,
 		Service:     p.serviceName,
-		Path:        p.buildPathWithId(id),
+		Path:        path,
 		PathParams:  p.pathParams,
 		Query:       url.Values{},
 		Encoder:     NewJSONEncoder(object),
