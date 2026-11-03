@@ -1,3 +1,9 @@
+# [0.3.2](https://github.com/eoscloud/go-eoscloud/compare/v0.3.1...v0.3.2) - 2026-11-03
+
+### 🐛 Bug Fixes
+
+- address security review findings for open-source release (#11) [_(c788294)_](https://github.com/eoscloud/go-eoscloud/commit/c78829422b9083ab7bada19296b2424877e2034c)
+
 # [0.3.1](https://github.com/eoscloud/go-eoscloud/compare/v0.3.0...v0.3.1) - 2026-11-03
 
 ### 🐛 Bug Fixes
