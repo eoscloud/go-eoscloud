@@ -1,3 +1,9 @@
+# [0.3.1](https://github.com/eoscloud/go-eoscloud/compare/v0.3.0...v0.3.1) - 2026-11-03
+
+### 🐛 Bug Fixes
+
+- Remove deprecated product endpoints (#9) [_(9435ee2)_](https://github.com/eoscloud/go-eoscloud/commit/9435ee218edb8908e18de80cdff2180b9afe3cf3)
+
 # [0.3.0](https://github.com/eoscloud/go-eoscloud/compare/v0.2.0...v0.3.0) - 2026-11-02
 
 ### 🚀 Features
