@@ -134,7 +134,10 @@ pips, err := client.Compute.PublicIP.List(ctx, params)
 forwards, err := client.Compute.Forward.List(ctx, params)
 
 // Products
-products, err := client.Compute.Product.List(ctx, params)
+vmProducts, err := client.Compute.VMProduct.List(ctx, params)
+volumeProducts, err := client.Compute.VolumeProduct.List(ctx, params)
+ipProducts, err := client.Compute.PublicIPProduct.List(ctx, params)
+lbProducts, err := client.Compute.LoadBalancerProduct.List(ctx, params)
 ```
 
 ### Error Handling

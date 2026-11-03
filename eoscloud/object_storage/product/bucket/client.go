@@ -10,15 +10,15 @@ import (
 
 // APIClient defines the interface for bucket product operations.
 type APIClient interface {
-	List(ctx context.Context, filter url.Values) (result *api.Page[model.Product], err error)
-	Get(ctx context.Context, id string, filter url.Values) (result *model.Product, err error)
+	List(ctx context.Context, filter url.Values) (result *api.Page[model.BucketProduct], err error)
+	Get(ctx context.Context, id string, filter url.Values) (result *model.BucketProduct, err error)
 }
 
 var _ APIClient = (*apiClient)(nil)
 
 type apiClient struct {
-	api.Lister[model.Product]
-	api.Getter[model.Product]
+	api.Lister[model.BucketProduct]
+	api.Getter[model.BucketProduct]
 }
 
 // NewClient returns the bucket product client eoscloud of the object storage service
@@ -33,7 +33,7 @@ func NewClient(
 	}
 
 	return &apiClient{
-		api.NewLister[model.Product](c, service, basePathPattern, pathParams),
-		api.NewGetter[model.Product](c, service, basePathPattern, pathParams),
+		api.NewLister[model.BucketProduct](c, service, basePathPattern, pathParams),
+		api.NewGetter[model.BucketProduct](c, service, basePathPattern, pathParams),
 	}
 }
