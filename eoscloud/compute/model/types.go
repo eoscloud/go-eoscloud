@@ -103,6 +103,16 @@ const (
 	OptimizationMemory  OptimizationEnum = "m"
 )
 
+// VMProductCategoryEnum represents VM product category
+type VMProductCategoryEnum string
+
+const (
+	VMProductCategoryTiny            VMProductCategoryEnum = "tiny"
+	VMProductCategoryStandard        VMProductCategoryEnum = "standard"
+	VMProductCategoryCPUOptimized    VMProductCategoryEnum = "cpu-optimized"
+	VMProductCategoryMemoryOptimized VMProductCategoryEnum = "memory-optimized"
+)
+
 // StorageTypeEnum represents volume storage type
 type StorageTypeEnum string
 
