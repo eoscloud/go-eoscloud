@@ -27,7 +27,8 @@ type VolumeProduct struct {
 	Active              bool            `json:"active,omitempty" yaml:"active,omitempty"`
 	Description         string          `json:"description,omitempty" yaml:"description,omitempty"`
 	StorageType         StorageTypeEnum `json:"storage_type,omitempty" yaml:"storage_type,omitempty"`
-	IOPSLimit           int             `json:"iops_limit,omitempty" yaml:"iops_limit,omitempty"`
+	IOPSLimitRead       int             `json:"iops_limit_read,omitempty" yaml:"iops_limit,omitempty"`
+	IOPSLimitWrite      int             `json:"iops_limit_write,omitempty" yaml:"iops_limit,omitempty"`
 	BlockIds            []string        `json:"block_ids,omitempty" yaml:"block_ids,omitempty"`
 	MicroCreditsPerUnit int             `json:"micro_credits_per_unit,omitempty" yaml:"micro_credits_per_unit,omitempty"`
 	Unit                UnitEnum        `json:"unit,omitempty" yaml:"unit,omitempty"`
