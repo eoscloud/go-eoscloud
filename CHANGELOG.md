@@ -1,3 +1,9 @@
+# [0.4.1](https://github.com/eoscloud/go-eoscloud/compare/v0.4.0...v0.4.1) - 2026-11-06
+
+### 🧹 Chore
+
+- split iops limit into r/w (#15) [_(0c6c689)_](https://github.com/eoscloud/go-eoscloud/commit/0c6c689163b01b33a77221b9ee09275bb4debd3c)
+
 # [0.4.0](https://github.com/eoscloud/go-eoscloud/compare/v0.3.2...v0.4.0) - 2026-11-04
 
 ### 🚀 Features
