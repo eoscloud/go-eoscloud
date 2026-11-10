@@ -1,3 +1,9 @@
+# [0.4.2](https://github.com/eoscloud/go-eoscloud/compare/v0.4.1...v0.4.2) - 2026-11-10
+
+### 🐛 Bug Fixes
+
+- Update dependencies (#17) [_(4045f15)_](https://github.com/eoscloud/go-eoscloud/commit/4045f15067061367201ba74c39e2cff1b40855f1)
+
 # [0.4.1](https://github.com/eoscloud/go-eoscloud/compare/v0.4.0...v0.4.1) - 2026-11-06
 
 ### 🧹 Chore
