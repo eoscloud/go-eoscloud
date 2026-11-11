@@ -141,12 +141,12 @@ func (c *client) buildServiceBaseURL(service string) string {
 }
 
 func defaultHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = 20
+	transport.IdleConnTimeout = 90 * time.Second
 	return &http.Client{
-		Timeout: 60 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConnsPerHost: 20,
-			IdleConnTimeout:     90 * time.Second,
-		},
+		Timeout:   60 * time.Second,
+		Transport: transport,
 	}
 }
 

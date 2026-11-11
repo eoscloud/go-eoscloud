@@ -71,6 +71,23 @@ func TestOptions_Modifiers(t *testing.T) {
 	assert.NotNil(t, c.httpClient.CheckRedirect)
 }
 
+func TestDefaultHTTPClient_UsesProxyFromEnvironment(t *testing.T) {
+	var gotCtx context.Context
+	c := NewClient(withFakeAuth(&fakeTS{}, &gotCtx)).(*client)
+
+	tr, ok := c.httpClient.Transport.(*oauth2.Transport)
+	require.True(t, ok)
+	base, ok := tr.Base.(*http.Transport)
+	require.True(t, ok)
+	assert.NotNil(t, base.Proxy)
+
+	tokenClient, ok := gotCtx.Value(oauth2.HTTPClient).(*http.Client)
+	require.True(t, ok)
+	tokenTransport, ok := tokenClient.Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.NotNil(t, tokenTransport.Proxy)
+}
+
 func TestOptions_AuthOrderIrrelevant(t *testing.T) {
 	for name, order := range map[string]func(hc *http.Client, ts *fakeTS) []Option{
 		"httpClientFirst": func(hc *http.Client, ts *fakeTS) []Option {
