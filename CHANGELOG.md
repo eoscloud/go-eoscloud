@@ -1,3 +1,13 @@
+# [0.4.3](https://github.com/eoscloud/go-eoscloud/compare/v0.4.2...v0.4.3) - 2026-11-11
+
+### 🐛 Bug Fixes
+
+- _(api)_ use the proxy settings from the environment (#19) [_(85349e5)_](https://github.com/eoscloud/go-eoscloud/commit/85349e51e9f4fff9e5b5e32c1f217ee3c8a2c0c5)
+
+### 🧹 Chore
+
+- update Go toolchain to 1.27.4 (#20) [_(3c857b3)_](https://github.com/eoscloud/go-eoscloud/commit/3c857b3068b267f890143ba0126b26e0846ad071)
+
 # [0.4.2](https://github.com/eoscloud/go-eoscloud/compare/v0.4.1...v0.4.2) - 2026-11-10
 
 ### 🐛 Bug Fixes
