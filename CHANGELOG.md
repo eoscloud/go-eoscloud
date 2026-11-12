@@ -1,3 +1,9 @@
+# [0.5.0](https://github.com/eoscloud/go-eoscloud/compare/v0.4.4...v0.5.0) - 2026-11-12
+
+### 🚀 Features
+
+- add local storage support (#24) [_(c63ebf4)_](https://github.com/eoscloud/go-eoscloud/commit/c63ebf4c391f228119f88b21b5328f2f7bbc2492)
+
 # [0.4.4](https://github.com/eoscloud/go-eoscloud/compare/v0.4.3...v0.4.4) - 2026-11-12
 
 ### 🐛 Bug Fixes
