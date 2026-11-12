@@ -87,6 +87,9 @@ type client struct {
 	authFactory func(ctx context.Context) auth.TokenSourceWithClaims
 	authCtx     context.Context
 	debugTokens bool
+	// wsSubdomains are the websocket subdomains accepted next to the API host:
+	// computeConsoleSubdomain plus those added via WithWebSocketSubdomains.
+	wsSubdomains []string
 }
 
 // resolvePathParams merges the caller-supplied pathParams with realm_id sourced
@@ -153,8 +156,9 @@ func defaultHTTPClient() *http.Client {
 // NewClient creates a new API client.
 func NewClient(opts ...Option) Caller {
 	c := &client{
-		baseURL:    BaseURLPattern,
-		httpClient: defaultHTTPClient(),
+		baseURL:      BaseURLPattern,
+		httpClient:   defaultHTTPClient(),
+		wsSubdomains: []string{computeConsoleSubdomain},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -294,4 +298,38 @@ func (c *client) Call(ctx context.Context, r *CallRequest) (any, error) {
 	}
 
 	return nil, nil
+}
+
+// WebSocketHostProvider is optionally implemented by a Caller to report every
+// host[:port] a server-provided WebSocket URL of service may point to. It is
+// preferred over ServiceHostProvider when validating such URLs.
+type WebSocketHostProvider interface {
+	WebSocketHosts(service string) ([]string, error)
+}
+
+var _ WebSocketHostProvider = (*client)(nil)
+
+// computeConsoleSubdomain is the subdomain of the API base domain that serves
+// the VM console and exec WebSockets (compute-console.<base domain>).
+const computeConsoleSubdomain = "compute-console"
+
+// WebSocketHosts returns the hosts accepted for WebSocket URLs of service: the
+// API host itself and its websocket subdomains (computeConsoleSubdomain plus
+// those added with WithWebSocketSubdomains) on the same base domain and port
+// ("compute.eoscloud.io" -> "compute-console.eoscloud.io"). The base domain is the API host without its
+// first label; a host without one has no subdomains.
+func (c *client) WebSocketHosts(service string) ([]string, error) {
+	host, err := c.ServiceHost(service)
+	if err != nil {
+		return nil, err
+	}
+	hosts := []string{host}
+	_, base, ok := strings.Cut(host, ".")
+	if !ok {
+		return hosts, nil
+	}
+	for _, sub := range c.wsSubdomains {
+		hosts = append(hosts, strings.ToLower(sub)+"."+base)
+	}
+	return hosts, nil
 }

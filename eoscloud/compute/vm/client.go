@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/coder/websocket"
@@ -110,8 +111,10 @@ func (c *client) withUserAgent(h http.Header) http.Header {
 
 // validateWebSocketURL checks a server-provided WebSocket URL before dialing.
 // The scheme must be wss (ws only for loopback hosts). If the underlying
-// Caller exposes its configured service host (api.ServiceHostProvider, as the
-// client from api.NewClient does), the URL host must equal that host.
+// Caller exposes its allowed hosts (api.WebSocketHostProvider, as the client
+// from api.NewClient does: the API host and its api.WithWebSocketSubdomains
+// and "compute-console" hosts, plus any api.WithWebSocketSubdomains) the URL
+// host must be one of them.
 // For custom Callers that do not expose a host, only the scheme is checked.
 func (c *client) validateWebSocketURL(raw string) error {
 	u, err := url.Parse(raw)
@@ -127,16 +130,30 @@ func (c *client) validateWebSocketURL(raw string) error {
 	default:
 		return fmt.Errorf("unsupported websocket URL scheme %q", u.Scheme)
 	}
+	hosts, err := c.allowedWebSocketHosts()
+	if err != nil {
+		return err
+	}
+	if hosts != nil && !slices.ContainsFunc(hosts, func(h string) bool { return strings.EqualFold(u.Host, h) }) {
+		return fmt.Errorf("websocket host %q does not match API host(s) %q", u.Host, hosts)
+	}
+	return nil
+}
+
+// allowedWebSocketHosts returns the hosts a WebSocket URL may point to, or nil
+// if the Caller exposes none.
+func (c *client) allowedWebSocketHosts() ([]string, error) {
+	if wp, ok := c.caller.(api.WebSocketHostProvider); ok {
+		return wp.WebSocketHosts(c.service)
+	}
 	if hp, ok := c.caller.(api.ServiceHostProvider); ok {
 		host, err := hp.ServiceHost(c.service)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if !strings.EqualFold(u.Host, host) {
-			return fmt.Errorf("websocket host %q does not match API host %q", u.Host, host)
-		}
+		return []string{host}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func isLoopback(host string) bool {

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -62,6 +63,28 @@ func isLoopbackHost(host string) bool {
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
+
+// WithWebSocketSubdomains allows additional subdomains of the API base domain
+// for server-provided WebSocket URLs; "compute-console" (the VM console) is
+// always allowed. Each entry must be a
+// single DNS label; it is resolved against the base domain and port of the
+// configured base URL ("console" with https://compute.eoscloud.io allows
+// console.eoscloud.io). The API host itself is always allowed. An invalid entry
+// does not panic: the error is returned by every Call.
+func WithWebSocketSubdomains(subdomains ...string) Option {
+	return func(c *client) {
+		for _, sub := range subdomains {
+			if !dnsLabel.MatchString(sub) {
+				c.optErr = fmt.Errorf("invalid websocket subdomain %q: want a single DNS label", sub)
+				return
+			}
+			c.wsSubdomains = append(c.wsSubdomains, sub)
+		}
+	}
+}
+
+// dnsLabel matches a single DNS label (RFC 1123).
+var dnsLabel = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
 
 // WithHTTPClient sets a custom base http.Client. Its Transport and Timeout are
 // kept; when an auth flow is configured, the oauth2 transport is layered on
