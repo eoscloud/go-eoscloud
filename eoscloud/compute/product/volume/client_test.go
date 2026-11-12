@@ -79,7 +79,7 @@ func TestVolumeProductClient_Get(t *testing.T) {
 				"id":           "prod-1",
 				"name":         "small",
 				"description":  "small product",
-				"storage_type": "performance",
+				"storage_type": "standard",
 			})
 		}))
 		defer srv.Close()
@@ -96,7 +96,7 @@ func TestVolumeProductClient_Get(t *testing.T) {
 		assert.Equal(t, "prod-1", result.ID)
 		assert.Equal(t, "small", result.Name)
 		assert.Equal(t, "small product", result.Description)
-		assert.Equal(t, model.StorageTypePerformance, result.StorageType)
+		assert.Equal(t, model.StorageTypeStandard, result.StorageType)
 	})
 
 	t.Run("Error_404", func(t *testing.T) {
