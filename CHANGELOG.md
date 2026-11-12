@@ -1,3 +1,9 @@
+# [0.4.4](https://github.com/eoscloud/go-eoscloud/compare/v0.4.3...v0.4.4) - 2026-11-12
+
+### 🐛 Bug Fixes
+
+- Allow calling compute-console for WSS connections (#22) [_(55e9f4a)_](https://github.com/eoscloud/go-eoscloud/commit/55e9f4ab7ecdeabbc7ab717ff4e15c154eab0ca3)
+
 # [0.4.3](https://github.com/eoscloud/go-eoscloud/compare/v0.4.2...v0.4.3) - 2026-11-11
 
 ### 🐛 Bug Fixes
