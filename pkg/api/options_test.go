@@ -233,3 +233,40 @@ func TestSharedTokenSource_ConcurrentClaims(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestWebSocketHosts(t *testing.T) {
+	hosts := func(t *testing.T, opts ...Option) []string {
+		t.Helper()
+		got, err := NewClient(opts...).(WebSocketHostProvider).WebSocketHosts("compute")
+		require.NoError(t, err)
+		return got
+	}
+
+	t.Run("API host and compute-console by default", func(t *testing.T) {
+		assert.Equal(t, []string{"compute.eoscloud.io", "compute-console.eoscloud.io"}, hosts(t))
+	})
+	t.Run("custom base domain and port", func(t *testing.T) {
+		got := hosts(t, WithBaseURL("https://{service}.eoscloud.dev:8443"))
+		assert.Equal(t, []string{"compute.eoscloud.dev:8443", "compute-console.eoscloud.dev:8443"}, got)
+	})
+	t.Run("base URL without service placeholder", func(t *testing.T) {
+		got := hosts(t, WithBaseURL("https://api.example.com"))
+		assert.Equal(t, []string{"api.example.com", "compute-console.example.com"}, got)
+	})
+	t.Run("host without base domain has no subdomains", func(t *testing.T) {
+		assert.Equal(t, []string{"localhost:8080"}, hosts(t, WithBaseURL("http://localhost:8080")))
+	})
+	t.Run("extra subdomains are appended and lowercased", func(t *testing.T) {
+		got := hosts(t, WithWebSocketSubdomains("Terminal"), WithWebSocketSubdomains("b", "c"))
+		assert.Equal(t, []string{
+			"compute.eoscloud.io", "compute-console.eoscloud.io",
+			"terminal.eoscloud.io", "b.eoscloud.io", "c.eoscloud.io",
+		}, got)
+	})
+	t.Run("invalid subdomains surface as option error", func(t *testing.T) {
+		for _, sub := range []string{"", "a.b", "evil.com", "-x", "x-", "x y", "x/y", "x:80", "*", "https://x", "x@y", "{service}-console"} {
+			_, err := NewClient(WithWebSocketSubdomains(sub)).(WebSocketHostProvider).WebSocketHosts("compute")
+			assert.Error(t, err, sub)
+		}
+	})
+}

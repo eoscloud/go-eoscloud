@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -458,5 +460,48 @@ func TestVMClient_Console_RejectsBadWebSocketURL(t *testing.T) {
 		_, _, err := c.Console(context.Background(), &id, &model.VMConsoleRequestRequest{}, nil, nil)
 		assert.Error(t, err, consoleURL)
 		srv.Close()
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestVMClient_Console_WebSocketHosts(t *testing.T) {
+	for consoleURL, allowed := range map[string]bool{
+		"wss://compute-console.eoscloud.io/ws":      true,
+		"wss://COMPUTE-CONSOLE.eoscloud.io/ws":      true,
+		"wss://extra.example.com:9443/ws":           false,
+		"wss://compute-console.evil.com/ws":         false,
+		"wss://compute-consolex.eoscloud.io/ws":     false,
+		"wss://evil.compute-console.eoscloud.io/ws": false,
+		"wss://compute-console.eoscloud.io:9999/ws": false,
+		"wss://other-console.eoscloud.io/ws":        false,
+	} {
+		rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"console_url":"` + consoleURL + `"}`)),
+				Request:    r,
+			}, nil
+		})
+		apiClient := api.NewClient(
+			api.WithHTTPClient(&http.Client{Transport: rt}),
+			api.WithWebSocketSubdomains("terminal"),
+		)
+		c := vm.NewClient(apiClient, "compute", "/{version}/realm-1/{kind}/")
+		id := "123"
+		cctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_, _, err := c.Console(cctx, &id, &model.VMConsoleRequestRequest{}, nil, nil)
+		cancel()
+		if allowed {
+			// passes validation; the dial itself fails (no server)
+			if assert.Error(t, err, consoleURL) {
+				assert.NotContains(t, err.Error(), "does not match", consoleURL)
+			}
+		} else if assert.Error(t, err, consoleURL) {
+			assert.Contains(t, err.Error(), "does not match", consoleURL)
+		}
 	}
 }
