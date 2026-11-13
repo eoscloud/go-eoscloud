@@ -1,3 +1,9 @@
+# [0.5.1](https://github.com/eoscloud/go-eoscloud/compare/v0.5.0...v0.5.1) - 2026-11-13
+
+### 🐛 Bug Fixes
+
+- build device flow token with namespace (#26) [_(ebc28ab)_](https://github.com/eoscloud/go-eoscloud/commit/ebc28ab83f3298a636c280d55ec6fce9e1a7e3ee)
+
 # [0.5.0](https://github.com/eoscloud/go-eoscloud/compare/v0.4.4...v0.5.0) - 2026-11-12
 
 ### 🚀 Features
