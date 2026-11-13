@@ -216,6 +216,21 @@ func (d *deviceKeyringTokenSource) loadLegacyToken() (*oauth2.Token, error) {
 	return &legacyToken, nil
 }
 
+// LoadDeviceFlowToken returns the token that a device flow token source for
+// the given auth server and client ID stored in store, without running the
+// interactive flow or refreshing it. It looks the token up exactly as the
+// token source does, including the adoption of a legacy entry. It returns
+// nil, nil when no token is cached.
+func LoadDeviceFlowToken(store TokenStore, authBaseURL, clientID string) (*oauth2.Token, error) {
+	d := &deviceKeyringTokenSource{
+		tokenKey:    DeviceFlowTokenKey(authBaseURL, clientID),
+		legacyKey:   DefaultDeviceFlowTokenKey,
+		authBaseURL: authBaseURL,
+		store:       store,
+	}
+	return d.loadFromKeyring()
+}
+
 func (d *deviceKeyringTokenSource) saveToKeyring(token *oauth2.Token) error {
 	data, err := json.Marshal(token) //nolint:gosec // the token is stored in the keyring or token store on purpose
 	if err != nil {
@@ -356,7 +371,7 @@ func NewDeviceKeyringTokenSource(ctx context.Context, c *DeviceFlowConfig, store
 
 	return &deviceKeyringTokenSource{
 		ctx:          context.WithoutCancel(ctx),
-		tokenKey:     namespacedTokenKey(DefaultDeviceFlowTokenKey, c.authBaseURL, c.clientID),
+		tokenKey:     DeviceFlowTokenKey(c.authBaseURL, c.clientID),
 		legacyKey:    DefaultDeviceFlowTokenKey,
 		authBaseURL:  c.authBaseURL,
 		store:        store,
