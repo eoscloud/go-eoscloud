@@ -59,6 +59,108 @@ func TestNamespacedTokenKey(t *testing.T) {
 	})
 }
 
+// TestDeviceFlowTokenKey verifies the exported key is the one the device flow
+// token source persists under, so other tools can find tokens it stored.
+func TestDeviceFlowTokenKey(t *testing.T) {
+	t.Run("MatchesTokenSourceKey", func(t *testing.T) {
+		c := NewDeviceFlowConfig()
+		c.With(WithDeviceFlowAuthBaseURL("https://auth.example.com"))
+		ts := NewDeviceKeyringTokenSource(context.Background(), c, newMemoryStore()).(*deviceKeyringTokenSource)
+
+		assert.Equal(t, ts.tokenKey, DeviceFlowTokenKey("https://auth.example.com", DefaultClientID))
+	})
+
+	t.Run("KnownValue", func(t *testing.T) {
+		// Pinned so that a change to the derivation, which would orphan every
+		// cached login, cannot go unnoticed.
+		assert.Equal(t, "eosctl-device-b635e634e1a3d477", DeviceFlowTokenKey("https://auth.eoscloud.io", DefaultClientID))
+	})
+}
+
+// TestLoadDeviceFlowToken verifies the non-interactive lookup used by tools
+// that reuse a login made with the device flow token source.
+func TestLoadDeviceFlowToken(t *testing.T) {
+	const authBaseURL = "https://auth.example.com"
+
+	token := func(iss string) *oauth2.Token {
+		return &oauth2.Token{
+			AccessToken: makeTestJWTWithIss(iss, map[string]any{
+				"eos": map[string]any{"realm": "realm-1", "org": "org-1"},
+			}),
+			RefreshToken: "refresh",
+			TokenType:    "Bearer",
+			Expiry:       time.Now().Add(10 * time.Minute),
+		}
+	}
+
+	t.Run("NamespacedKey_Found", func(t *testing.T) {
+		want := token(authBaseURL)
+		data, _ := json.Marshal(want)
+		store := newMemoryStore()
+		_ = store.Set(DeviceFlowTokenKey(authBaseURL, DefaultClientID), string(data))
+
+		got, err := LoadDeviceFlowToken(store, authBaseURL, DefaultClientID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, want.AccessToken, got.AccessToken)
+	})
+
+	t.Run("NamespacedKeyPreferredOverLegacy", func(t *testing.T) {
+		want := token(authBaseURL)
+		data, _ := json.Marshal(want)
+		legacyData, _ := json.Marshal(&oauth2.Token{AccessToken: "legacy"})
+		store := newMemoryStore()
+		_ = store.Set(DeviceFlowTokenKey(authBaseURL, DefaultClientID), string(data))
+		_ = store.Set(DefaultDeviceFlowTokenKey, string(legacyData))
+
+		got, err := LoadDeviceFlowToken(store, authBaseURL, DefaultClientID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, want.AccessToken, got.AccessToken)
+	})
+
+	t.Run("LegacyKey_SameIssuer_Adopted", func(t *testing.T) {
+		legacy := token(authBaseURL)
+		data, _ := json.Marshal(legacy)
+		store := newMemoryStore()
+		_ = store.Set(DefaultDeviceFlowTokenKey, string(data))
+
+		got, err := LoadDeviceFlowToken(store, authBaseURL, DefaultClientID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, legacy.AccessToken, got.AccessToken)
+
+		stored, err := store.Get(DeviceFlowTokenKey(authBaseURL, DefaultClientID))
+		require.NoError(t, err)
+		assert.Equal(t, string(data), stored, "adopted token must be migrated to the namespaced key")
+	})
+
+	t.Run("OtherAuthServer_NotFound", func(t *testing.T) {
+		data, _ := json.Marshal(token("https://auth.other.example.com"))
+		store := newMemoryStore()
+		_ = store.Set(DeviceFlowTokenKey("https://auth.other.example.com", DefaultClientID), string(data))
+		_ = store.Set(DefaultDeviceFlowTokenKey, string(data))
+
+		got, err := LoadDeviceFlowToken(store, authBaseURL, DefaultClientID)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("EmptyStore_NotFound", func(t *testing.T) {
+		got, err := LoadDeviceFlowToken(newMemoryStore(), authBaseURL, DefaultClientID)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("UnparseableNamespacedEntry_Error", func(t *testing.T) {
+		store := newMemoryStore()
+		_ = store.Set(DeviceFlowTokenKey(authBaseURL, DefaultClientID), "not json")
+
+		_, err := LoadDeviceFlowToken(store, authBaseURL, DefaultClientID)
+		assert.Error(t, err)
+	})
+}
+
 // TestIssuerMatchesAuthBaseURL verifies normalization and comparison rules.
 func TestIssuerMatchesAuthBaseURL(t *testing.T) {
 	tests := []struct {

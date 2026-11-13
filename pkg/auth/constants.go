@@ -41,6 +41,14 @@ func namespacedTokenKey(legacyBase, authBaseURL, clientID string) string {
 	return legacyBase + "-" + hex.EncodeToString(h[:])[:16]
 }
 
+// DeviceFlowTokenKey returns the key under which the device flow token source
+// stores the token for the given auth server and client ID. Tools that only
+// read a cached login should use LoadDeviceFlowToken instead, which also
+// falls back to the legacy key.
+func DeviceFlowTokenKey(authBaseURL, clientID string) string {
+	return namespacedTokenKey(DefaultDeviceFlowTokenKey, authBaseURL, clientID)
+}
+
 // DefaultTokenStoreDir returns the platform-appropriate directory for token
 // storage: $XDG_CONFIG_HOME/eosctl/tokens (falling back to ~/.config) on
 // XDG platforms, ~/Library/Application Support/eosctl/tokens on darwin and
