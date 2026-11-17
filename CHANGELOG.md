@@ -1,3 +1,9 @@
+# [0.6.0](https://github.com/eoscloud/go-eoscloud/compare/v0.5.1...v0.6.0) - 2026-11-17
+
+### 🚀 Features
+
+- Implement bucket products (#28) [_(ac09938)_](https://github.com/eoscloud/go-eoscloud/commit/ac09938ccf59301f07398f85af17862f60f1a6b1)
+
 # [0.5.1](https://github.com/eoscloud/go-eoscloud/compare/v0.5.0...v0.5.1) - 2026-11-13
 
 ### 🐛 Bug Fixes
