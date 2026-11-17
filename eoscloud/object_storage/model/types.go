@@ -14,5 +14,5 @@ const (
 type UnitEnum string
 
 const (
-	UnitGigabytes UnitEnum = "gigabytes"
+	UnitGigabyteHours UnitEnum = "gigabytehours"
 )
