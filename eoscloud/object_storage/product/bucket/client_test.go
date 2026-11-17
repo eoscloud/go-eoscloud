@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.eoscloud.io/go-eoscloud/eoscloud/object_storage/model"
 	"go.eoscloud.io/go-eoscloud/eoscloud/object_storage/product/bucket"
 	"go.eoscloud.io/go-eoscloud/pkg/api"
 )
@@ -23,8 +24,17 @@ func TestBucketProductClient_List(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"count":   1,
-				"results": []map[string]any{{"id": "prod-1", "name": "small"}},
+				"count": 1,
+				"results": []map[string]any{{
+					"_self":               "/v1/bucket-products/prod-1/",
+					"id":                  "prod-1",
+					"name":                "small",
+					"unit":                "gigabytehours",
+					"min_quota_bytes":     1073741824,
+					"max_quota_bytes":     5497558138880,
+					"default_quota_bytes": 10737418240,
+					"_actions":            []string{},
+				}},
 			})
 		}))
 		defer srv.Close()
@@ -42,6 +52,11 @@ func TestBucketProductClient_List(t *testing.T) {
 		require.Len(t, result.Results, 1)
 		assert.Equal(t, "prod-1", result.Results[0].ID)
 		assert.Equal(t, "small", result.Results[0].Name)
+		assert.Equal(t, "/v1/bucket-products/prod-1/", result.Results[0].Self)
+		assert.Equal(t, model.UnitGigabyteHours, result.Results[0].Unit)
+		assert.Equal(t, int64(1073741824), result.Results[0].MinQuotaBytes)
+		assert.Equal(t, int64(5497558138880), result.Results[0].MaxQuotaBytes)
+		assert.Equal(t, int64(10737418240), result.Results[0].DefaultQuotaBytes)
 	})
 
 	t.Run("Error_404", func(t *testing.T) {
@@ -75,9 +90,11 @@ func TestBucketProductClient_Get(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          "prod-1",
-				"name":        "small",
-				"description": "small product",
+				"id":              "prod-1",
+				"name":            "small",
+				"description":     "small product",
+				"unit":            "gigabytehours",
+				"max_quota_bytes": 5497558138880,
 			})
 		}))
 		defer srv.Close()
@@ -94,6 +111,8 @@ func TestBucketProductClient_Get(t *testing.T) {
 		assert.Equal(t, "prod-1", result.ID)
 		assert.Equal(t, "small", result.Name)
 		assert.Equal(t, "small product", result.Description)
+		assert.Equal(t, model.UnitGigabyteHours, result.Unit)
+		assert.Equal(t, int64(5497558138880), result.MaxQuotaBytes)
 	})
 
 	t.Run("Error_404", func(t *testing.T) {
