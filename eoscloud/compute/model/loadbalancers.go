@@ -17,6 +17,7 @@ type LoadBalancer struct {
 	ProductID        string                   `json:"product_id,omitempty" yaml:"product_id,omitempty"`
 	Description      string                   `json:"description,omitempty" yaml:"description,omitempty"`
 	Status           StatusEnum               `json:"status,omitempty" yaml:"status,omitempty"`
+	Health           LoadBalancerHealthEnum   `json:"health,omitempty" yaml:"health,omitempty"`
 	CreatedAt        time.Time                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 	UpdatedAt        time.Time                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 	Actions          []string                 `json:"_actions,omitempty" yaml:"_actions,omitempty"`
