@@ -1,3 +1,9 @@
+# [0.7.0](https://github.com/eoscloud/go-eoscloud/compare/v0.6.0...v0.7.0) - 2026-11-18
+
+### 🚀 Features
+
+- _(object-storage)_ remove deprecated product client (#30) [_(00eb05b)_](https://github.com/eoscloud/go-eoscloud/commit/00eb05bbd690bc4244ac31f567fdc7c651d7eafe)
+
 # [0.6.0](https://github.com/eoscloud/go-eoscloud/compare/v0.5.1...v0.6.0) - 2026-11-17
 
 ### 🚀 Features
