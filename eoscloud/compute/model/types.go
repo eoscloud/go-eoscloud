@@ -69,6 +69,15 @@ const (
 	LoadBalancerProtocolUDP LoadBalancerProtocolEnum = "udp"
 )
 
+// LoadBalancerHealthEnum is the health of a load balancer.
+type LoadBalancerHealthEnum string
+
+const (
+	LoadBalancerHealthUnknown   LoadBalancerHealthEnum = "unknown"
+	LoadBalancerHealthHealthy   LoadBalancerHealthEnum = "healthy"
+	LoadBalancerHealthUnhealthy LoadBalancerHealthEnum = "unhealthy"
+)
+
 // PowerStateEnum represents VM power state
 // Values: started, stopped, starting, stopping, rebooting
 
