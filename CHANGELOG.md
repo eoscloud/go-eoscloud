@@ -1,3 +1,9 @@
+# [0.8.0](https://github.com/eoscloud/go-eoscloud/compare/v0.7.0...v0.8.0) - 2026-11-18
+
+### 🚀 Features
+
+- add health status to load balancer model (#32) [_(3621776)_](https://github.com/eoscloud/go-eoscloud/commit/362177623e7ebeda4ac656212efd3c04e1102150)
+
 # [0.7.0](https://github.com/eoscloud/go-eoscloud/compare/v0.6.0...v0.7.0) - 2026-11-18
 
 ### 🚀 Features
