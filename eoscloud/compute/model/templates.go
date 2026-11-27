@@ -18,7 +18,6 @@ type Template struct {
 	CreatedAt   time.Time  `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 	UpdatedAt   time.Time  `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 	Actions     []string   `json:"_actions,omitempty" yaml:"_actions,omitempty"`
-	CloudInit   bool       `json:"cloud_init,omitempty" yaml:"cloud_init,omitempty"`
 }
 
 // TemplateRequest represents the payload for creating a template.

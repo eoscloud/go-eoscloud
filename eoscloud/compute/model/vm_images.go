@@ -9,7 +9,6 @@ type VMImage struct {
 	ID           string           `json:"id,omitempty" yaml:"id,omitempty"`
 	Name         string           `json:"name,omitempty" yaml:"name,omitempty"`
 	Architecture ArchitectureEnum `json:"architecture,omitempty" yaml:"architecture,omitempty"`
-	CloudInit    bool             `json:"cloud_init,omitempty" yaml:"cloud_init,omitempty"`
 	Active       bool             `json:"active,omitempty" yaml:"active,omitempty"`
 	Actions      []string         `json:"_actions,omitempty" yaml:"_actions,omitempty"`
 }
