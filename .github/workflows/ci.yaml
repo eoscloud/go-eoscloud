@@ -1,5 +1,4 @@
-# CI for pull requests and main, on GitHub and, unchanged, on the internal
-# copy (it runs these workflows too, so hidden branches get the same checks).
+# CI for pull requests and main.
 name: ci
 
 on:

@@ -8,8 +8,7 @@ linters:
     - gosec
   settings:
     gocognit:
-      # Same threshold as SonarQube's cognitive complexity rule (go:S3776),
-      # which this check replaces.
+      # The commonly used threshold for cognitive complexity.
       min-complexity: 15
     gosec:
       excludes:
@@ -22,7 +21,7 @@ linters:
     rules:
       # Table-driven tests are long by design, and test fixtures use loose
       # permissions and fake tokens: complexity and security are checked in
-      # production code only, as SonarQube did.
+      # production code only.
       - path: _test\.go
         linters:
           - gocognit

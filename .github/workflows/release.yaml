@@ -21,8 +21,11 @@ concurrency:
 jobs:
   releasaurus:
     name: releasaurus
-    # Releases happen on GitHub only; the internal copy must not release again.
+    # Releases are made on github.com only, never from a mirror of this
+    # repository.
     if: github.server_url == 'https://github.com'
+    # The App key is an environment secret: only main may use it.
+    environment: release
     runs-on: ubuntu-latest
     # Checkout of CHANGELOG.md; everything else uses the App token.
     permissions:
